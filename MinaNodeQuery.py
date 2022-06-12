@@ -14,20 +14,21 @@ logging.getLogger(__name__).addHandler(logging.StreamHandler(sys.stdout))
 logging.basicConfig( format = '%(asctime)s.%(msecs)03d %(levelname)s: %(message)s',
     level = logging.INFO )
 
-load_dotenv()  # take environment variables from .env.
+load_dotenv('.env')  # take environment variables from .env.
 
-hostname = os.getenv('HOSTNAME')
-current_time = datetime.datetime.now()
 
 class MinaNodeQuery:
 
     def __init__( self ):
         '''constructor'''
         self.mode = os.getenv('RUN_MODE')
-        logging.info( f"Mina Node Query for {hostname} for Mode {self.mode}")
+        self.sleep_time = os.getenv('SLEEP_TIME')
+        self.hostname = os.getenv('HOSTNAME')
+
+        logging.info( f"Mina Node Query for {self.hostname} for Mode {self.mode}")
 
         if self.mode == 'docker':
-            self.command = ['docker', 'exec', '-it', os.getenv('DOCKER_CONTAINER'), 'mina', 'advanced', 'node-status', '-daemon-peers']
+            self.command = ['docker', 'exec', os.getenv('DOCKER_CONTAINER'), 'mina', 'advanced', 'node-status', '-daemon-peers']
         else:
             self.command = ['mina', 'advanced', 'node-status', '-daemon-peers']
 
@@ -40,18 +41,25 @@ class MinaNodeQuery:
             'password': os.getenv('DATABASE_PASSWORD'),
         } )
 
-        # remove previous entries from the host
-        self.drop_host_entries()
 
-        # query and add entries
-        self.execute()
+        while True:
+            # remove previous entries from the host
+            self.drop_host_entries()
+
+            # query and add entries
+            self.current_time = datetime.datetime.now()
+            self.execute()
+
+            # Sleep after each cycle
+            logging.info( f"Sleeping for { self.sleep_time } Seconds" )
+            time.sleep( int( self.sleep_time ) )
 
     def execute( self ):
         '''perform the query and insert into the database'''
         logging.info( f"Collecting Daemon Data" )
         # execute the command and obtain the result from the daemon
-        p = subprocess.check_output(self.command, shell=False)
-        result = filter(None, p.decode('utf-8').split('\r\n'))
+        p = subprocess.check_output(" ".join(self.command), shell=True)
+        result = filter(None, p.decode('utf-8').split('\n'))
         ip_list = []
 
         # collect the ip addresses 
@@ -68,8 +76,9 @@ class MinaNodeQuery:
         logging.info(f"Collected {len(ip_list)} Unique IP Addresses")
 
         # insert into the database
+        logging.info(f"Inserting {len(ip_list)} IP Addresses into the Database")
         for ip_address in ip_list:
-            data = ( ip_address, current_time, hostname )
+            data = ( ip_address, self.current_time, self.hostname )
             logging.debug( f"Inserting {data}" )
             self.insert_ip_address( data )
 
@@ -102,11 +111,11 @@ class MinaNodeQuery:
 
     def drop_host_entries( self ):
         '''drop entries from the host'''
-        logging.info( f"Dropping Old Entries for {hostname}" )
+        logging.info( f"Dropping Old Entries for {self.hostname}" )
         cmd = """
             DELETE FROM node_data
             WHERE origin = '%s';
-        """ % hostname
+        """ % self.hostname
         self.conn.cursor().execute( cmd )
 
 # run the class
