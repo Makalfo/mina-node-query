@@ -16,7 +16,6 @@ logging.basicConfig( format = '%(asctime)s.%(msecs)03d %(levelname)s: %(message)
 
 load_dotenv('.env')  # take environment variables from .env.
 
-
 class MinaNodeQuery:
 
     def __init__( self ):
@@ -43,9 +42,6 @@ class MinaNodeQuery:
 
 
         while True:
-            # remove previous entries from the host
-            self.drop_host_entries()
-
             # query and add entries
             self.current_time = datetime.datetime.now()
             self.execute()
@@ -70,10 +66,16 @@ class MinaNodeQuery:
             # collect peers
             for peer in node_data['peers']:
                 ip_list.append( peer['host'] )
+            # ban status
+            for peer in node_data['ban_statuses']:
+                ip_list.append( peer[0]['host'] )
 
         # sort and obtain unique
         ip_list = sorted(list(set(ip_list)))
         logging.info(f"Collected {len(ip_list)} Unique IP Addresses")
+
+        # remove previous entries from the host
+        self.drop_host_entries()
 
         # insert into the database
         logging.info(f"Inserting {len(ip_list)} IP Addresses into the Database")
